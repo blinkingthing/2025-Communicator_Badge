@@ -55,19 +55,43 @@ The badge uses the MCP73831 battery charge management controller for charging a 
       percent = 0
   ```
 
-## TODO: Identify GPIO Pin Assignments
+## Schematic Analysis Results
 
-Need to determine which ESP32-S3 GPIO pins are connected to:
-1. **MCP73831 STAT pin** - For charge status
-2. **VBAT monitoring** - For battery voltage (with voltage divider)
+### Current Hardware Configuration
+Analysis of `hardware/communicator_pcb/Power.kicad_sch` and `communicator_pcb.kicad_sch`:
 
-### Investigation Steps:
-1. Check schematic (if available in documentation/)
-2. Test ADC-capable pins (GPIO 1-10) for voltage in 3.0-4.2V range
-3. Test digital pins for STAT signal behavior during charging
+**MCP73831 STAT Pin (Pin 1):**
+- ❌ **NOT connected to ESP32-S3 GPIO**
+- ✓ Connected to LED D2 (charge indicator LED) via R9 (5.1k resistor)
+- LED provides visual charge status indication only
 
-### ESP32-S3 ADC Channels
-The ESP32-S3 has two ADC units:
+**VBAT (Battery Voltage):**
+- ❌ **NO voltage divider to ESP32-S3 ADC pin**
+- ✓ VBAT goes directly to battery connector J4 (PH2.0)
+- ✓ PFET Q2 (DMG2305) controls battery power distribution
+
+### Conclusion
+**Battery monitoring is NOT currently implemented in the hardware design.**
+
+The badge hardware provides:
+- ✓ Visual charge status via LED D2
+- ❌ No software-accessible charge status signal
+- ❌ No battery voltage measurement capability
+
+### Potential Hardware Modifications (Not Implemented)
+To add battery monitoring, hardware modifications would be required:
+
+1. **STAT Monitoring:** Connect MCP73831 STAT pin to an unused GPIO
+   - Available GPIOs: 11, 12, 19, 20, or others
+   - Would require PCB rework/modification
+
+2. **VBAT Monitoring:** Add voltage divider from VBAT to ADC pin
+   - Suggested divider: 100k + 100k (divide by 2: 4.2V → 2.1V)
+   - Connect to ADC1 pin (GPIO 1-10) or ADC2 pin (GPIO 11-20)
+   - ESP32-S3 ADC max input: 3.3V (2.1V provides safe margin)
+   - Would require PCB rework/modification
+
+### ESP32-S3 ADC Channels (Reference)
 - **ADC1:** GPIO 1-10 (preferred - doesn't conflict with WiFi)
 - **ADC2:** GPIO 11-20 (may conflict with WiFi)
 
