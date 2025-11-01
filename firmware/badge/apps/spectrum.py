@@ -23,8 +23,8 @@ class SpectrumAnalyzer(BaseApp):
         # Display settings
         self.graph_x_offset = 35  # Left margin for dBm scale
         self.bar_width = 7  # Width of each frequency bar (52 × 7 = 364 pixels)
-        self.graph_height = 85  # Height of the spectrum graph
-        self.graph_y_offset = 25  # Y position where graph starts
+        self.graph_height = 80  # Height of the spectrum graph
+        self.graph_y_offset = 30  # Y position where graph starts
 
         # RSSI history for each channel (for averaging/smoothing)
         self.rssi_history = [[-120.0] * 3 for _ in range(self.num_channels)]
@@ -57,9 +57,10 @@ class SpectrumAnalyzer(BaseApp):
         self.display_mode = "spectrum"  # "spectrum" or "waterfall"
 
         # Waterfall data storage (rows x channels)
-        self.waterfall_rows = 85  # Height of graph area
+        self.waterfall_rows = 40  # Number of scans to store (each scan = 2 pixels tall)
         self.waterfall_data = []  # List of lists: each inner list is one scan (52 RSSI values)
         self.waterfall_pixels = []  # LVGL objects for waterfall display
+        self.waterfall_row_height = 2  # Pixels per waterfall row
 
     def switch_to_foreground(self):
         """Set up the spectrum analyzer screen."""
@@ -152,7 +153,7 @@ class SpectrumAnalyzer(BaseApp):
             self.freq_labels.append(label)
 
     def draw_scale_labels(self):
-        """Draw dBm scale on the left side."""
+        """Draw dBm or time scale on the left side."""
         # Clear old scale labels
         for label in self.scale_labels:
             try:
@@ -161,16 +162,26 @@ class SpectrumAnalyzer(BaseApp):
                 pass
         self.scale_labels = []
 
-        # Draw scale at top, middle, and bottom
-        scale_values = [
-            (self.max_rssi, self.graph_y_offset),  # Top
-            ((self.baseline_rssi + self.max_rssi) / 2, self.graph_y_offset + self.graph_height // 2),  # Middle
-            (self.baseline_rssi, self.graph_y_offset + self.graph_height - 10),  # Bottom
-        ]
+        if self.display_mode == "spectrum":
+            # Draw dBm scale for spectrum mode
+            scale_values = [
+                (f"{self.max_rssi:.0f}", self.graph_y_offset),  # Top
+                (f"{(self.baseline_rssi + self.max_rssi) / 2:.0f}", self.graph_y_offset + self.graph_height // 2),  # Middle
+                (f"{self.baseline_rssi:.0f}", self.graph_y_offset + self.graph_height - 10),  # Bottom
+            ]
+        else:
+            # Draw time scale for waterfall mode
+            # Approximate scan rate: ~1-2 scans/sec, 40 rows total
+            total_time = self.waterfall_rows  # Rough seconds estimate
+            scale_values = [
+                ("Now", self.graph_y_offset + self.graph_height - 10),  # Bottom (newest)
+                (f"{total_time//2}s", self.graph_y_offset + self.graph_height // 2),  # Middle
+                (f"{total_time}s", self.graph_y_offset),  # Top (oldest)
+            ]
 
-        for rssi, y_pos in scale_values:
+        for text, y_pos in scale_values:
             label = lvgl.label(self.badge.display.screen)
-            label.set_text(f"{rssi:.0f}")
+            label.set_text(text)
             label.set_style_text_color(lvgl.color_hex(0x888888), 0)
             label.set_style_text_font(lvgl.font_montserrat_12, 0)
             label.set_pos(2, y_pos)
@@ -198,7 +209,7 @@ class SpectrumAnalyzer(BaseApp):
     def add_waterfall_row(self, scan_data):
         """Add a new row to the waterfall display."""
         # Calculate y position for new row (at bottom)
-        y_pos = self.graph_y_offset + len(self.waterfall_data) - 1
+        y_pos = self.graph_y_offset + (len(self.waterfall_data) - 1) * self.waterfall_row_height
 
         # Don't draw if we haven't started collecting data yet
         if len(self.waterfall_data) == 0:
@@ -212,7 +223,7 @@ class SpectrumAnalyzer(BaseApp):
 
             # Draw a small rectangle for this frequency/time point
             pixel = lvgl.obj(self.badge.display.screen)
-            pixel.set_size(self.bar_width - 1, 1)  # 1 pixel tall
+            pixel.set_size(self.bar_width - 1, self.waterfall_row_height)  # 2 pixels tall
             pixel.set_pos(x_pos, y_pos)
             pixel.set_style_bg_color(lvgl.color_hex(color), 0)
             pixel.set_style_border_width(0, 0)
@@ -234,22 +245,24 @@ class SpectrumAnalyzer(BaseApp):
         """Toggle between spectrum and waterfall display modes."""
         if self.display_mode == "spectrum":
             self.display_mode = "waterfall"
-            # Hide spectrum bars
+            # Hide spectrum bars instantly
             for bar in self.spectrum_bars:
                 try:
                     bar.add_flag(lvgl.obj.FLAG.HIDDEN)
                 except:
                     pass
-            # Draw existing waterfall data if we have any
+
+            # Draw existing waterfall data if we have any (draw all rows we have)
             if len(self.waterfall_data) > 0:
+                # Draw all cached rows to show full history
                 for row_idx, scan_data in enumerate(self.waterfall_data):
-                    y_pos = self.graph_y_offset + row_idx
+                    y_pos = self.graph_y_offset + row_idx * self.waterfall_row_height
                     row_pixels = []
                     for ch_idx, rssi in enumerate(scan_data):
                         x_pos = self.graph_x_offset + ch_idx * self.bar_width
                         color = self.get_color_for_rssi(rssi)
                         pixel = lvgl.obj(self.badge.display.screen)
-                        pixel.set_size(self.bar_width - 1, 1)
+                        pixel.set_size(self.bar_width - 1, self.waterfall_row_height)
                         pixel.set_pos(x_pos, y_pos)
                         pixel.set_style_bg_color(lvgl.color_hex(color), 0)
                         pixel.set_style_border_width(0, 0)
@@ -257,23 +270,48 @@ class SpectrumAnalyzer(BaseApp):
                     self.waterfall_pixels.append(row_pixels)
         else:
             self.display_mode = "spectrum"
-            # Show spectrum bars
-            for bar in self.spectrum_bars:
-                try:
-                    bar.clear_flag(lvgl.obj.FLAG.HIDDEN)
-                except:
-                    pass
-            # Hide waterfall pixels
+
+            # Hide waterfall pixels instantly
             for row in self.waterfall_pixels:
                 for pixel in row:
                     try:
-                        pixel.delete()
+                        pixel.add_flag(lvgl.obj.FLAG.HIDDEN)
                     except:
                         pass
-            self.waterfall_pixels = []
 
-        # Update title
+            # Delete old spectrum bars and recreate them with current data
+            for bar in self.spectrum_bars:
+                try:
+                    bar.delete()
+                except:
+                    pass
+            self.spectrum_bars = []
+
+            # Recreate all bars with current RSSI data
+            for idx in range(self.num_channels):
+                try:
+                    # Calculate bar properties from current RSSI
+                    avg_rssi = sum(self.rssi_history[idx]) / len(self.rssi_history[idx])
+                    dynamic_range = max(20, self.max_rssi - self.baseline_rssi)
+                    rssi_clamped = max(self.baseline_rssi, min(self.max_rssi, avg_rssi))
+                    bar_height = int((rssi_clamped - self.baseline_rssi) * self.graph_height / dynamic_range)
+                    bar_height = max(2, min(self.graph_height, bar_height))
+                    color = self.get_color_for_rssi(avg_rssi)
+
+                    # Create new bar
+                    bar = lvgl.obj(self.badge.display.screen)
+                    bar.set_size(self.bar_width - 1, bar_height)
+                    bar.set_pos(self.graph_x_offset + idx * self.bar_width,
+                               self.graph_y_offset + self.graph_height - bar_height)
+                    bar.set_style_bg_color(lvgl.color_hex(color), 0)
+                    bar.set_style_border_width(0, 0)
+                    self.spectrum_bars.append(bar)
+                except:
+                    pass
+
+        # Update title and scale labels
         self.update_title()
+        self.draw_scale_labels()
 
     def recalibrate(self):
         """Reset calibration to start fresh."""
@@ -336,11 +374,11 @@ class SpectrumAnalyzer(BaseApp):
             # Set radio to this frequency and let it settle
             self.badge.lora.radio.setFrequency(freq)
             self.badge.lora.radio.standby()
-            time.sleep_ms(5)  # Let frequency settle
+            time.sleep_ms(3)  # Let frequency settle (reduced from 5ms)
 
             # Put radio in RX mode briefly to measure RSSI
             self.badge.lora.radio.setRx(0)  # Continuous RX
-            time.sleep_ms(2)  # Brief delay to start receiving
+            time.sleep_ms(1)  # Brief delay to start receiving (reduced from 2ms)
 
             # Get instantaneous RSSI
             rssi = self.get_instantaneous_rssi()
@@ -418,20 +456,20 @@ class SpectrumAnalyzer(BaseApp):
             # Move to next channel
             self.current_channel = (self.current_channel + 1) % self.num_channels
 
-            # If we just completed a full scan (wrapped to 0), update waterfall
+            # If we just completed a full scan (wrapped to 0), update waterfall data
             if self.current_channel == 0:
                 # Get average RSSI for each channel for this scan
                 scan_rssi = [sum(self.rssi_history[i]) / len(self.rssi_history[i])
                             for i in range(self.num_channels)]
 
-                # Add to waterfall data (newest at bottom)
+                # Always add to waterfall data (collected in both modes)
                 self.waterfall_data.append(scan_rssi)
 
                 # Limit to waterfall_rows
                 if len(self.waterfall_data) > self.waterfall_rows:
                     self.waterfall_data.pop(0)
 
-                # Add new row to waterfall if in waterfall mode
+                # Only draw new row if actively in waterfall mode
                 if self.display_mode == "waterfall":
                     self.add_waterfall_row(scan_rssi)
 
@@ -500,7 +538,14 @@ class SpectrumAnalyzer(BaseApp):
                 pass
         self.spectrum_bars = []
 
-        # Clear waterfall pixels
+        # Hide waterfall pixels instantly, then delete
+        for row in self.waterfall_pixels:
+            for pixel in row:
+                try:
+                    pixel.add_flag(lvgl.obj.FLAG.HIDDEN)
+                except:
+                    pass
+        # Now delete them (hidden, so instant from user perspective)
         for row in self.waterfall_pixels:
             for pixel in row:
                 try:
