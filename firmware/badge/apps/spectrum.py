@@ -217,18 +217,27 @@ class SpectrumAnalyzer(BaseApp):
 
         print(f"[WATERFALL] Adding row, current pixel rows: {len(self.waterfall_pixels)}, max: {self.waterfall_rows}")
 
-        # If we're at max capacity, delete the top (oldest) row and shift all rows up
+        # If we're at max capacity, REUSE the top (oldest) row's pixels instead of deleting them
         if len(self.waterfall_pixels) >= self.waterfall_rows:
             scroll_start = time.ticks_ms()
-            # Delete the top (oldest) row
+
+            # Take the oldest row from the top (remove from list)
             oldest_row = self.waterfall_pixels.pop(0)
-            for pixel in oldest_row:
+
+            # Move each pixel in the old row to the bottom and update its color
+            y_pos = self.graph_y_offset + ((self.waterfall_rows - 1) * self.waterfall_row_height)
+            for ch_idx, pixel in enumerate(oldest_row):
                 try:
-                    pixel.delete()
+                    # Move pixel to bottom row
+                    pixel.set_y(y_pos)
+                    # Update color with new data
+                    color = self.get_color_for_rssi(scan_data[ch_idx])
+                    pixel.set_style_bg_color(lvgl.color_hex(color), 0)
                 except:
                     pass
 
-            # Reposition all remaining rows up by waterfall_row_height pixels
+            # Now shift all remaining rows up by one row height
+            # Check buttons every 10 rows for responsiveness during repositioning
             for row_idx, row in enumerate(self.waterfall_pixels):
                 new_y = self.graph_y_offset + (row_idx * self.waterfall_row_height)
                 for pixel in row:
@@ -236,38 +245,51 @@ class SpectrumAnalyzer(BaseApp):
                         pixel.set_y(new_y)
                     except:
                         pass
-            scroll_time = time.ticks_diff(time.ticks_ms(), scroll_start)
-            print(f"[WATERFALL] Scroll (delete+reposition) took {scroll_time}ms, repositioned {len(self.waterfall_pixels)} rows")
 
-            # Check buttons after scrolling (it can be slow)
+                # Check buttons every 10 rows during repositioning
+                if row_idx % 10 == 0:
+                    if self.check_buttons():
+                        # Still need to add the reused row back before returning
+                        self.waterfall_pixels.append(oldest_row)
+                        return
+
+            # Add the reused row to the end (it's now the newest row at bottom)
+            self.waterfall_pixels.append(oldest_row)
+
+            scroll_time = time.ticks_diff(time.ticks_ms(), scroll_start)
+            print(f"[WATERFALL] Scroll (reuse+reposition) took {scroll_time}ms")
+
+            # Check buttons after scrolling
             if self.check_buttons():
                 return
 
-        # Draw the new row at the next available position (bottom of current rows)
-        draw_start = time.ticks_ms()
-        row_idx = len(self.waterfall_pixels)
-        y_pos = self.graph_y_offset + (row_idx * self.waterfall_row_height)
-        print(f"[WATERFALL] Drawing new row at index {row_idx}, y={y_pos}")
+        else:
+            # Not at max capacity yet - create new pixels for this row
+            draw_start = time.ticks_ms()
+            row_idx = len(self.waterfall_pixels)
+            y_pos = self.graph_y_offset + (row_idx * self.waterfall_row_height)
+            print(f"[WATERFALL] Creating new row at index {row_idx}, y={y_pos}")
 
-        row_pixels = []
-        for ch_idx, rssi in enumerate(scan_data):
-            x_pos = self.graph_x_offset + ch_idx * self.bar_width
-            color = self.get_color_for_rssi(rssi)
+            row_pixels = []
+            for ch_idx, rssi in enumerate(scan_data):
+                x_pos = self.graph_x_offset + ch_idx * self.bar_width
+                color = self.get_color_for_rssi(rssi)
 
-            # Draw a small rectangle for this frequency/time point
-            pixel = lvgl.obj(self.badge.display.screen)
-            pixel.set_size(self.bar_width - 1, self.waterfall_row_height)  # 2 pixels tall
-            pixel.set_pos(x_pos, y_pos)
-            pixel.set_style_bg_color(lvgl.color_hex(color), 0)
-            pixel.set_style_border_width(0, 0)
-            row_pixels.append(pixel)
+                # Draw a small rectangle for this frequency/time point
+                pixel = lvgl.obj(self.badge.display.screen)
+                pixel.set_size(self.bar_width - 1, self.waterfall_row_height)
+                pixel.set_pos(x_pos, y_pos)
+                pixel.set_style_bg_color(lvgl.color_hex(color), 0)
+                pixel.set_style_border_width(0, 0)
+                row_pixels.append(pixel)
 
-        # Add this row to our tracking
-        self.waterfall_pixels.append(row_pixels)
-        draw_time = time.ticks_diff(time.ticks_ms(), draw_start)
+            # Add this row to our tracking
+            self.waterfall_pixels.append(row_pixels)
+            draw_time = time.ticks_diff(time.ticks_ms(), draw_start)
+            print(f"[WATERFALL] Create took {draw_time}ms")
 
         total_time = time.ticks_diff(time.ticks_ms(), start_time)
-        print(f"[WATERFALL] Draw took {draw_time}ms, Total: {total_time}ms, rows now: {len(self.waterfall_pixels)}")
+        print(f"[WATERFALL] Total: {total_time}ms, rows now: {len(self.waterfall_pixels)}")
 
     def toggle_display_mode(self):
         """Toggle between spectrum and waterfall display modes."""
