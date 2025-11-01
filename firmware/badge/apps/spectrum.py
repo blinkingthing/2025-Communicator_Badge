@@ -239,6 +239,10 @@ class SpectrumAnalyzer(BaseApp):
             scroll_time = time.ticks_diff(time.ticks_ms(), scroll_start)
             print(f"[WATERFALL] Scroll (delete+reposition) took {scroll_time}ms, repositioned {len(self.waterfall_pixels)} rows")
 
+            # Check buttons after scrolling (it can be slow)
+            if self.check_buttons():
+                return
+
         # Draw the new row at the next available position (bottom of current rows)
         draw_start = time.ticks_ms()
         row_idx = len(self.waterfall_pixels)
@@ -480,6 +484,11 @@ class SpectrumAnalyzer(BaseApp):
             # Move to next channel
             self.current_channel = (self.current_channel + 1) % self.num_channels
 
+            # Check buttons every 10 channels for responsiveness
+            if self.current_channel % 10 == 0:
+                if self.check_buttons():
+                    return
+
             # If we just completed a full scan (wrapped to 0), update waterfall data
             if self.current_channel == 0:
                 import time
@@ -499,17 +508,25 @@ class SpectrumAnalyzer(BaseApp):
 
                 print(f"[SCAN] Waterfall data: {len(self.waterfall_data)} scans stored")
 
+                # Check buttons before waterfall drawing (it can be slow)
+                if self.check_buttons():
+                    return
+
                 # Only draw new row if actively in waterfall mode
                 if self.display_mode == "waterfall":
                     print(f"[SCAN] Drawing waterfall row...")
                     self.add_waterfall_row(scan_rssi)
 
+                # Check buttons after waterfall drawing
+                if self.check_buttons():
+                    return
+
         except Exception as e:
             # If scanning fails, just continue
             pass
 
-    def run_foreground(self):
-        """Main loop - scan spectrum."""
+    def check_buttons(self):
+        """Check for button presses and handle them. Returns True if button was handled."""
         # Check for hold (pause scanning)
         if self.badge.keyboard.f1():
             self.scanning_active = not self.scanning_active
@@ -525,21 +542,29 @@ class SpectrumAnalyzer(BaseApp):
                     self.status_label.set_style_text_color(lvgl.color_hex(0xFFFF00), 0)
                 except:
                     pass
-            return
+            return True
 
         # Check for recalibrate
         if self.badge.keyboard.f3():
             self.recalibrate()
-            return
+            return True
 
         # Check for mode toggle
         if self.badge.keyboard.f4():
             self.toggle_display_mode()
-            return
+            return True
 
         # Check for exit
         if self.badge.keyboard.f5():
             self.switch_to_background()
+            return True
+
+        return False
+
+    def run_foreground(self):
+        """Main loop - scan spectrum."""
+        # Check for button presses
+        if self.check_buttons():
             return
 
         # Scan next channel
