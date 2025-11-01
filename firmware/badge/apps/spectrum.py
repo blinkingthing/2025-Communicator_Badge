@@ -59,8 +59,9 @@ class SpectrumAnalyzer(BaseApp):
         # Waterfall data storage (rows x channels)
         self.waterfall_rows = 40  # Number of scans to store (each scan = 2 pixels tall)
         self.waterfall_data = []  # List of lists: each inner list is one scan (52 RSSI values)
-        self.waterfall_pixels = []  # LVGL objects for waterfall display
+        self.waterfall_pixels = []  # LVGL objects for waterfall display (fixed positions)
         self.waterfall_row_height = 2  # Pixels per waterfall row
+        self.waterfall_next_row = 0  # Circular buffer index: which row to overwrite next
 
     def switch_to_foreground(self):
         """Set up the spectrum analyzer screen."""
@@ -207,7 +208,7 @@ class SpectrumAnalyzer(BaseApp):
             return 0x0088FF  # Blue - near baseline (bottom 20%)
 
     def add_waterfall_row(self, scan_data):
-        """Add a new row to the waterfall display - newest at bottom, scrolls up."""
+        """Add a new row to waterfall - circular buffer, pixels stay at fixed positions."""
         import time
         start_time = time.ticks_ms()
 
@@ -215,67 +216,19 @@ class SpectrumAnalyzer(BaseApp):
         if len(self.waterfall_data) == 0:
             return
 
-        print(f"[WATERFALL] Adding row, current pixel rows: {len(self.waterfall_pixels)}, max: {self.waterfall_rows}")
+        print(f"[WATERFALL] Adding row, current pixel rows: {len(self.waterfall_pixels)}, next_row: {self.waterfall_next_row}")
 
-        # If we're at max capacity, REUSE the top (oldest) row's pixels instead of deleting them
-        if len(self.waterfall_pixels) >= self.waterfall_rows:
-            scroll_start = time.ticks_ms()
-
-            # Take the oldest row from the top (remove from list)
-            oldest_row = self.waterfall_pixels.pop(0)
-
-            # Move each pixel in the old row to the bottom and update its color
-            y_pos = self.graph_y_offset + ((self.waterfall_rows - 1) * self.waterfall_row_height)
-            for ch_idx, pixel in enumerate(oldest_row):
-                try:
-                    # Move pixel to bottom row
-                    pixel.set_y(y_pos)
-                    # Update color with new data
-                    color = self.get_color_for_rssi(scan_data[ch_idx])
-                    pixel.set_style_bg_color(lvgl.color_hex(color), 0)
-                except:
-                    pass
-
-            # Now shift all remaining rows up by one row height
-            # Check buttons every 10 rows for responsiveness during repositioning
-            for row_idx, row in enumerate(self.waterfall_pixels):
-                new_y = self.graph_y_offset + (row_idx * self.waterfall_row_height)
-                for pixel in row:
-                    try:
-                        pixel.set_y(new_y)
-                    except:
-                        pass
-
-                # Check buttons every 10 rows during repositioning
-                if row_idx % 10 == 0:
-                    if self.check_buttons():
-                        # Still need to add the reused row back before returning
-                        self.waterfall_pixels.append(oldest_row)
-                        return
-
-            # Add the reused row to the end (it's now the newest row at bottom)
-            self.waterfall_pixels.append(oldest_row)
-
-            scroll_time = time.ticks_diff(time.ticks_ms(), scroll_start)
-            print(f"[WATERFALL] Scroll (reuse+reposition) took {scroll_time}ms")
-
-            # Check buttons after scrolling
-            if self.check_buttons():
-                return
-
-        else:
-            # Not at max capacity yet - create new pixels for this row
-            draw_start = time.ticks_ms()
+        # If not at full capacity yet, create new row at next position
+        if len(self.waterfall_pixels) < self.waterfall_rows:
             row_idx = len(self.waterfall_pixels)
             y_pos = self.graph_y_offset + (row_idx * self.waterfall_row_height)
-            print(f"[WATERFALL] Creating new row at index {row_idx}, y={y_pos}")
+            print(f"[WATERFALL] Creating new row {row_idx} at y={y_pos}")
 
             row_pixels = []
             for ch_idx, rssi in enumerate(scan_data):
                 x_pos = self.graph_x_offset + ch_idx * self.bar_width
                 color = self.get_color_for_rssi(rssi)
 
-                # Draw a small rectangle for this frequency/time point
                 pixel = lvgl.obj(self.badge.display.screen)
                 pixel.set_size(self.bar_width - 1, self.waterfall_row_height)
                 pixel.set_pos(x_pos, y_pos)
@@ -283,13 +236,33 @@ class SpectrumAnalyzer(BaseApp):
                 pixel.set_style_border_width(0, 0)
                 row_pixels.append(pixel)
 
-            # Add this row to our tracking
             self.waterfall_pixels.append(row_pixels)
-            draw_time = time.ticks_diff(time.ticks_ms(), draw_start)
-            print(f"[WATERFALL] Create took {draw_time}ms")
+            draw_time = time.ticks_diff(time.ticks_ms(), start_time)
+            print(f"[WATERFALL] Create took {draw_time}ms, rows now: {len(self.waterfall_pixels)}")
 
-        total_time = time.ticks_diff(time.ticks_ms(), start_time)
-        print(f"[WATERFALL] Total: {total_time}ms, rows now: {len(self.waterfall_pixels)}")
+        else:
+            # At full capacity - reuse row at waterfall_next_row index (circular buffer)
+            # This row stays at its fixed Y position, we just update the colors
+            row = self.waterfall_pixels[self.waterfall_next_row]
+            print(f"[WATERFALL] Reusing row {self.waterfall_next_row} (pixels stay in place)")
+
+            # Update colors for all pixels in this row
+            for ch_idx, pixel in enumerate(row):
+                try:
+                    color = self.get_color_for_rssi(scan_data[ch_idx])
+                    pixel.set_style_bg_color(lvgl.color_hex(color), 0)
+                except:
+                    pass
+
+            # Advance to next row in circular buffer
+            self.waterfall_next_row = (self.waterfall_next_row + 1) % self.waterfall_rows
+
+            update_time = time.ticks_diff(time.ticks_ms(), start_time)
+            print(f"[WATERFALL] Update took {update_time}ms, next_row now: {self.waterfall_next_row}")
+
+        # Check buttons after updating
+        if self.check_buttons():
+            return
 
     def toggle_display_mode(self):
         """Toggle between spectrum and waterfall display modes."""
@@ -318,6 +291,12 @@ class SpectrumAnalyzer(BaseApp):
                         pixel.set_style_border_width(0, 0)
                         row_pixels.append(pixel)
                     self.waterfall_pixels.append(row_pixels)
+
+                # Set next_row to start of buffer if full, otherwise next available position
+                if len(self.waterfall_pixels) >= self.waterfall_rows:
+                    self.waterfall_next_row = 0  # Circular buffer will overwrite from start
+                else:
+                    self.waterfall_next_row = len(self.waterfall_pixels)
         else:
             self.display_mode = "spectrum"
 
@@ -390,6 +369,7 @@ class SpectrumAnalyzer(BaseApp):
                 except:
                     pass
         self.waterfall_pixels = []
+        self.waterfall_next_row = 0  # Reset circular buffer index
 
     def get_instantaneous_rssi(self):
         """Get instantaneous RSSI from the radio."""
@@ -631,6 +611,7 @@ class SpectrumAnalyzer(BaseApp):
                 except:
                     pass
         self.waterfall_pixels = []
+        self.waterfall_next_row = 0  # Reset circular buffer index
 
         # Clear grid lines
         for line in self.grid_lines:
