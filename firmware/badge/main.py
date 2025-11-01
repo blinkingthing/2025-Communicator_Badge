@@ -8,6 +8,7 @@ try:
 
     ## Import your app here
     from apps import app_menu, chat, config_manager, usb_debug, nametag, talks
+    from apps import snake  ## Snake game!
     from apps import userA, userB, userC, userD  ## An invitation
 
 
@@ -28,7 +29,7 @@ async def main():
     badgenet.init(badge)
     # Link them into the menu system here, for starters
     user_apps = [
-        userA.App("User A", badge),
+        snake.SnakeApp("Snake", badge),
         userB.App("User B", badge),
         userC.App("User C", badge),
         userD.App("User D", badge),
