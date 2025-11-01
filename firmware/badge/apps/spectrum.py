@@ -23,7 +23,7 @@ class SpectrumAnalyzer(BaseApp):
         # Display settings
         self.graph_x_offset = 35  # Left margin for dBm scale
         self.bar_width = 7  # Width of each frequency bar (52 × 7 = 364 pixels)
-        self.graph_height = 95  # Height of the spectrum graph
+        self.graph_height = 85  # Height of the spectrum graph
         self.graph_y_offset = 25  # Y position where graph starts
 
         # RSSI history for each channel (for averaging/smoothing)
@@ -57,7 +57,7 @@ class SpectrumAnalyzer(BaseApp):
         self.display_mode = "spectrum"  # "spectrum" or "waterfall"
 
         # Waterfall data storage (rows x channels)
-        self.waterfall_rows = 95  # Height of graph area
+        self.waterfall_rows = 85  # Height of graph area
         self.waterfall_data = []  # List of lists: each inner list is one scan (52 RSSI values)
         self.waterfall_pixels = []  # LVGL objects for waterfall display
 
@@ -148,7 +148,7 @@ class SpectrumAnalyzer(BaseApp):
             label.set_text(f"{freq}")
             label.set_style_text_color(lvgl.color_hex(0xAAAAAA), 0)  # Light gray
             label.set_style_text_font(lvgl.font_montserrat_12, 0)
-            label.set_pos(x_pos - 10, 123)  # Position below graph with margin
+            label.set_pos(x_pos - 10, 113)  # Position below graph with margin
             self.freq_labels.append(label)
 
     def draw_scale_labels(self):
