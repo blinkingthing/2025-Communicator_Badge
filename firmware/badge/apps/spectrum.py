@@ -12,7 +12,7 @@ class SpectrumAnalyzer(BaseApp):
 
     def __init__(self, name: str, badge):
         super().__init__(name, badge)
-        self.foreground_sleep_ms = 100  # Update 10 times per second
+        self.foreground_sleep_ms = 1  # Minimal sleep - each channel scan takes ~4ms anyway
 
         # Spectrum settings for 915 MHz ISM band
         self.start_freq = 902.0  # MHz
@@ -207,15 +207,44 @@ class SpectrumAnalyzer(BaseApp):
             return 0x0088FF  # Blue - near baseline (bottom 20%)
 
     def add_waterfall_row(self, scan_data):
-        """Add a new row to the waterfall display."""
-        # Calculate y position for new row (at bottom)
-        y_pos = self.graph_y_offset + (len(self.waterfall_data) - 1) * self.waterfall_row_height
+        """Add a new row to the waterfall display - newest at bottom, scrolls up."""
+        import time
+        start_time = time.ticks_ms()
 
         # Don't draw if we haven't started collecting data yet
         if len(self.waterfall_data) == 0:
             return
 
-        # Draw the new row
+        print(f"[WATERFALL] Adding row, current pixel rows: {len(self.waterfall_pixels)}, max: {self.waterfall_rows}")
+
+        # If we're at max capacity, delete the top (oldest) row and shift all rows up
+        if len(self.waterfall_pixels) >= self.waterfall_rows:
+            scroll_start = time.ticks_ms()
+            # Delete the top (oldest) row
+            oldest_row = self.waterfall_pixels.pop(0)
+            for pixel in oldest_row:
+                try:
+                    pixel.delete()
+                except:
+                    pass
+
+            # Reposition all remaining rows up by waterfall_row_height pixels
+            for row_idx, row in enumerate(self.waterfall_pixels):
+                new_y = self.graph_y_offset + (row_idx * self.waterfall_row_height)
+                for pixel in row:
+                    try:
+                        pixel.set_y(new_y)
+                    except:
+                        pass
+            scroll_time = time.ticks_diff(time.ticks_ms(), scroll_start)
+            print(f"[WATERFALL] Scroll (delete+reposition) took {scroll_time}ms, repositioned {len(self.waterfall_pixels)} rows")
+
+        # Draw the new row at the next available position (bottom of current rows)
+        draw_start = time.ticks_ms()
+        row_idx = len(self.waterfall_pixels)
+        y_pos = self.graph_y_offset + (row_idx * self.waterfall_row_height)
+        print(f"[WATERFALL] Drawing new row at index {row_idx}, y={y_pos}")
+
         row_pixels = []
         for ch_idx, rssi in enumerate(scan_data):
             x_pos = self.graph_x_offset + ch_idx * self.bar_width
@@ -231,15 +260,10 @@ class SpectrumAnalyzer(BaseApp):
 
         # Add this row to our tracking
         self.waterfall_pixels.append(row_pixels)
+        draw_time = time.ticks_diff(time.ticks_ms(), draw_start)
 
-        # If we've exceeded max rows, delete the oldest row
-        if len(self.waterfall_pixels) > self.waterfall_rows:
-            oldest_row = self.waterfall_pixels.pop(0)
-            for pixel in oldest_row:
-                try:
-                    pixel.delete()
-                except:
-                    pass
+        total_time = time.ticks_diff(time.ticks_ms(), start_time)
+        print(f"[WATERFALL] Draw took {draw_time}ms, Total: {total_time}ms, rows now: {len(self.waterfall_pixels)}")
 
     def toggle_display_mode(self):
         """Toggle between spectrum and waterfall display modes."""
@@ -458,6 +482,10 @@ class SpectrumAnalyzer(BaseApp):
 
             # If we just completed a full scan (wrapped to 0), update waterfall data
             if self.current_channel == 0:
+                import time
+                scan_complete_time = time.ticks_ms()
+                print(f"\n[SCAN] Complete scan at {scan_complete_time}, mode: {self.display_mode}")
+
                 # Get average RSSI for each channel for this scan
                 scan_rssi = [sum(self.rssi_history[i]) / len(self.rssi_history[i])
                             for i in range(self.num_channels)]
@@ -469,8 +497,11 @@ class SpectrumAnalyzer(BaseApp):
                 if len(self.waterfall_data) > self.waterfall_rows:
                     self.waterfall_data.pop(0)
 
+                print(f"[SCAN] Waterfall data: {len(self.waterfall_data)} scans stored")
+
                 # Only draw new row if actively in waterfall mode
                 if self.display_mode == "waterfall":
+                    print(f"[SCAN] Drawing waterfall row...")
                     self.add_waterfall_row(scan_rssi)
 
         except Exception as e:
