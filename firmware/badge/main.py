@@ -11,7 +11,7 @@ try:
     from apps import snake  ## Snake game!
     from apps import screensaver  ## Screensaver app
     from apps import hwmonitor  ## Hardware monitor
-    from apps import userD  ## An invitation
+    from apps import spectrum  ## Spectrum analyzer
 
 
 except Exception as ex:
@@ -34,7 +34,7 @@ async def main():
         snake.SnakeApp("Snake", badge),
         screensaver.ScreensaverApp("Screensaver", badge),
         hwmonitor.HardwareMonitor("HW Mon", badge),
-        userD.App("User D", badge),
+        spectrum.SpectrumAnalyzer("Spectrum", badge),
         # Only 4, the 5th button goes to Home
     ]
     user_menu = app_menu.AppMenu("User", badge, user_apps, False)
