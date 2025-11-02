@@ -41,22 +41,21 @@ The spectrum analyzer automatically learns the RF environment during initial cal
 
 All colors and scales adjust relative to these learned values, making the display useful in both quiet and busy RF environments.
 
-## Common Questions
+### Signal Detection
+The instantaneous RSSI measurement detects any RF energy in the 902-928 MHz ISM band, regardless of modulation type. You'll see WiFi, Zigbee, LoRa, and other ISM band users. Typical RSSI values are:
+- **Noise floor**: -110 to -120 dBm (shown in blue)
+- **Nearby transmitters**: -40 to -80 dBm (shown in yellow/orange/red)
+- **Distant signals**: -90 to -110 dBm (shown in green/yellow)
 
-**Q: Why does it show "Calibrating..." at startup?**
-A: The analyzer needs to learn the noise floor and signal range of your RF environment. This takes about 4 full scans (~2-4 seconds).
+Channels that remain blue are at or near the noise floor with no detectable signal activity, which is normal for unused frequencies.
 
-**Q: Why do I need to recalibrate?**
-A: If the RF environment changes significantly (e.g., moving locations, strong transmitter turns on/off), recalibrating resets the baseline and improves display sensitivity.
+### Calibration
+At startup, the analyzer displays "Calibrating..." while it learns the noise floor and signal range of your RF environment. This initial calibration takes about 4 full scans (~2-4 seconds). If the RF environment changes significantly (e.g., moving locations, strong transmitter turns on/off), use F3 to recalibrate for improved display sensitivity.
 
-**Q: What RSSI values are normal?**
-A: Noise floor is typically -110 to -120 dBm. Nearby LoRa transmitters appear around -40 to -80 dBm. Distant signals are -90 to -110 dBm.
+### Radio Usage
+The analyzer saves and restores the original radio frequency when entering/exiting. However, the radio cannot send/receive LoRa packets while spectrum scanning is active.
 
-**Q: Can this detect non-LoRa signals?**
-A: Yes! The instantaneous RSSI measurement detects any RF energy in the band, regardless of modulation type. You'll see WiFi, Zigbee, LoRa, and other ISM band users.
+## Known Issues
 
-**Q: Why are some channels always blue?**
-A: Those frequencies are at or near the noise floor - no detectable signal activity. This is normal for unused channels.
-
-**Q: Does this affect normal badge LoRa operation?**
-A: The analyzer saves and restores the original radio frequency when entering/exiting. However, the radio cannot send/receive LoRa packets while spectrum scanning is active.
+- **Waterfall Performance**: When the waterfall display fills the screen, the refresh rate becomes slow and may appear buggy. This is due to the overhead of managing the circular buffer display on the hardware.
+- **Mode Switching**: Toggling between Spectrum and Waterfall modes or exiting the app can sometimes be unresponsive or cause the app to hang. If this occurs, you may need to restart the badge. For best results, use F1 (Hold) to pause scanning before switching modes or exiting.

@@ -23,10 +23,8 @@ Animated bouncing badge logo screensaver with color cycling effects.
 
 The screensaver uses LVGL image rendering with dynamic color recoloring. The bouncing physics reverses velocity on collision with screen edges, creating a DVD-player-style bounce effect.
 
-## Common Questions
+### Automatic Activation
+Automatic screensaver activation based on idle time requires integration with the main badge idle detection system, which is not yet implemented in this version. Currently, the screensaver must be launched manually from the app menu.
 
-**Q: How do I enable automatic screensaver activation?**
-A: This requires integration with the main badge idle detection system (not yet implemented in this version).
-
-**Q: Can I change the bounce speed?**
-A: Yes, modify `dx` and `dy` values in the code (currently set to ±4 pixels/frame).
+### Customization
+You can customize the bounce speed by modifying the `dx` and `dy` velocity values in the code (currently set to ±4 pixels per frame). Increasing these values will make the logo move faster, while decreasing them will slow it down.

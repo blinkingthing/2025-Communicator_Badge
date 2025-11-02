@@ -27,13 +27,11 @@ Multi-page system information display showing real-time badge hardware status.
 
 The monitor reads hardware state from various badge subsystems including the ESP32, LoRa radio (SX1262), display controller, and I2C buses. It displays a scroll indicator (e.g., "1-9/15") when content is scrollable.
 
-## Common Questions
+### Memory Monitoring
+The app runs `gc.collect()` before displaying memory statistics to ensure accurate reporting of available memory. This may cause memory usage to appear different when opening the monitor compared to normal operation.
 
-**Q: Why does the memory usage change when I open this app?**
-A: The app runs `gc.collect()` before displaying memory stats to show accurate available memory.
+### LoRa Signal Strength
+The RSSI (Received Signal Strength Indicator) shown on the LoRa page indicates the signal strength of the last received packet, measured in dBm. More negative values indicate weaker signals (e.g., -120 dBm is very weak, -40 dBm is strong).
 
-**Q: What does "Last RSSI" mean on the LoRa page?**
-A: RSSI (Received Signal Strength Indicator) shows the signal strength of the last received packet in dBm. More negative = weaker signal.
-
-**Q: Can I add custom monitoring pages?**
-A: Yes, add new page names to `self.pages` and create corresponding `get_*_info()` methods.
+### Customization
+You can add custom monitoring pages by adding new page names to the `self.pages` list and creating corresponding `get_*_info()` methods that return lists of formatted strings.
